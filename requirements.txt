@@ -9,3 +9,4 @@ sentencepiece==0.2.0
 h5py==3.11.0
 opencv-python==4.9.0.80
 imgaug==0.4.0
+huggingface_hub==0.25.2

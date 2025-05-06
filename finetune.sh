@@ -9,9 +9,11 @@ export VISION_ENCODER_NAME="google/siglip-so400m-patch14-384"
 export OUTPUT_DIR="./checkpoints/rdt-finetune-1b"
 export CFLAGS="-I/usr/include"
 export LDFLAGS="-L/usr/lib/x86_64-linux-gnu"
-export CUTLASS_PATH="/path/to/cutlass"
+export CUTLASS_PATH="/data/home/tanhengkai/cobot-magic-vm/RoboticsDiffusionTransformer/site-packages/cutlass"
 
 export WANDB_PROJECT="robotics_diffusion_transformer"
+
+export HF_HUB_OFFLINE=1
 
 if [ ! -d "$OUTPUT_DIR" ]; then
     mkdir "$OUTPUT_DIR"
@@ -25,7 +27,8 @@ fi
 #     --deepspeed="./configs/zero2.json" \
 #     ...
 
-deepspeed --hostfile=hostfile.txt main.py \
+deepspeed --include localhost:0,1,2,3,4,5,6,7 \
+    main.py \
     --deepspeed="./configs/zero2.json" \
     --pretrained_model_name_or_path="robotics-diffusion-transformer/rdt-1b" \
     --pretrained_text_encoder_name_or_path=$TEXT_ENCODER_NAME \
@@ -44,8 +47,7 @@ deepspeed --hostfile=hostfile.txt main.py \
     --image_aug \
     --dataset_type="finetune" \
     --state_noise_snr=40 \
-    --load_from_hdf5 \
-    --report_to=wandb
+    --load_from_hdf5
 
     # Use this to resume training from some previous checkpoint
     # --resume_from_checkpoint="checkpoint-36000" \
