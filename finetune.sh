@@ -6,7 +6,7 @@ export NCCL_NVLS_ENABLE=0
 
 export TEXT_ENCODER_NAME="google/t5-v1_1-xxl"
 export VISION_ENCODER_NAME="google/siglip-so400m-patch14-384"
-export OUTPUT_DIR="./checkpoints/rdt-finetune-1b"
+export OUTPUT_DIR="./checkpoints/rdt-finetune-1b-batchsize-768"
 export CFLAGS="-I/usr/include"
 export LDFLAGS="-L/usr/lib/x86_64-linux-gnu"
 export CUTLASS_PATH="/data/home/tanhengkai/cobot-magic-vm/RoboticsDiffusionTransformer/site-packages/cutlass"
@@ -40,6 +40,7 @@ deepspeed --include localhost:0,1,2,3,4,5,6,7 \
     --checkpointing_period=1000 \
     --sample_period=500 \
     --checkpoints_total_limit=40 \
+    --gradient_accumulation_steps=3 \
     --lr_scheduler="constant" \
     --learning_rate=1e-4 \
     --mixed_precision="bf16" \

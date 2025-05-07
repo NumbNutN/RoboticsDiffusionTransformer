@@ -9,6 +9,7 @@ import numpy as np
 from configs.state_vec import STATE_VEC_IDX_MAPPING
 
 import torch
+import random
 
 class HDF5VLADataset:
     """
@@ -20,11 +21,10 @@ class HDF5VLADataset:
         # Each HDF5 file contains one episode
         self.DATASET_NAME = "human_mani"
 
-        METALIST = "/data/home/tanhengkai/cobot-magic-vm/assets/metadatas/human_meta_file.list"
-        with open(METALIST,'r') as f:
-            lines = f.readlines()
-            self.file_paths = [line.strip() for line in lines]
-                
+        self.METALIST = "/data/home/tanhengkai/cobot-magic-vm/assets/metadatas/human_meta_file.list"
+        
+        self.data_preload()
+
         # Load the config
         with open('configs/base.yaml', 'r') as file:
             config = yaml.safe_load(file)
@@ -42,7 +42,7 @@ class HDF5VLADataset:
             episode_lens.append(_len)
         self.episode_sample_weights = np.array(episode_lens) / np.sum(episode_lens)
 
-    
+
     def get_item_name(self,json_file):
         with open(json_file, 'r') as f:
             meta_dat = json.load(f)
@@ -52,6 +52,64 @@ class HDF5VLADataset:
             "tensor_path": meta_dat['video_path'].replace('.mp4', '_qpos.pt'),
             "caption": meta_dat['raw_caption']['long caption'],
         }
+
+
+    def data_preload(self):
+        
+        with open(self.METALIST,'r') as f:
+            lines = f.readlines()
+            self.file_paths = [line.strip() for line in lines]
+
+            crop_param = {
+                'cam_high': (0, 0, 480, 640),
+                'cam_left_wrist': (480, 0, 240, 320),
+                'cam_right_wrist': (480, 320, 240, 320)
+            }
+
+            # crate large dataset dict
+            self.dataset_dict = {}
+
+            for file_path in self.file_paths:
+                item_name = self.get_item_name(file_path)
+                key = item_name['video_path'].split('/')[-2] + '/' + item_name['video_path'].split('/')[-1].replace('.mp4', '')
+
+                assert(key not in self.dataset_dict and "warning key duplicated")
+
+                video_path = item_name['video_path']
+                tensor_path = item_name['tensor_path']
+
+                cam_left_wrist = []
+                cam_right_wrist = []
+                cam_high = []
+                cap = cv2.VideoCapture(video_path)
+                while True:
+                    ret, frame = cap.read()
+                    if not ret:
+                        break
+                    for key, (x, y, h, w) in crop_param.items():
+                        if key == 'cam_high':
+                            cam_high.append(frame[y:y+h, x:x+w])
+                        elif key == 'cam_left_wrist':
+                            cam_left_wrist.append(frame[y:y+h, x:x+w])
+                        elif key == 'cam_right_wrist':
+                            cam_right_wrist.append(frame[y:y+h, x:x+w])
+                cam_left_wrist = np.array(cam_left_wrist)
+                cam_high = np.array(cam_high)
+                cam_right_wrist = np.array(cam_right_wrist)
+
+                qpos = torch.load(tensor_path).cpu().numpy()
+
+                self.dataset_dict[key] = {
+                    "caption": item_name['caption'],
+                    "cam_left_wrist": cam_left_wrist,
+                    "cam_high": cam_high,
+                    "cam_right_wrist": cam_right_wrist,
+                    "qpos": qpos,
+                    "tensor_path": tensor_path,
+                }
+
+        return 
+            
     
     def __len__(self):
         return 100000000
@@ -74,23 +132,19 @@ class HDF5VLADataset:
         """
         while True:
             if index is None:
-                file_path = np.random.choice(self.file_paths, p=self.episode_sample_weights)
+                key,value = random.choice(list(self.dataset_dict.items()))
             else:
-                file_path = self.file_paths[index]
+                key,value = list(self.dataset_dict.items())[index]
 
-            item_name = self.get_item_name(file_path)
-            valid, sample = self.parse_tensor_file(
-                item_name['video_path'],
-                item_name['tensor_path'],
-                item_name['caption']) \
-                if not state_only else self.parse_tensor_file_state_only(item_name['tensor_path'])
+            valid, sample = self.parse_tensor_file(value['cam_high'], value['cam_left_wrist'], value['cam_right_wrist'], value['qpos'], value['caption']) \
+                if not state_only else self.parse_tensor_file_state_only(value['tensor_path'])
             if valid:
                 return sample
             else:
                 index = np.random.randint(0, len(self.file_paths))
 
 
-    def parse_tensor_file(self, video_path,tensor_path,caption):
+    def parse_tensor_file(self, cam_high, cam_left_wrist, cam_right_wrist, qpos, caption):
         """[Modify] Parse a hdf5 file to generate a training sample at
             a random timestep.
 
@@ -137,8 +191,7 @@ class HDF5VLADataset:
 
         first_idx = 1
 
-        #(N, 14)
-        qpos = torch.load(tensor_path).cpu().numpy()
+        #qpos  (N, 14)
 
         num_steps = qpos.shape[0]
         # [Optional] We drop too-short episode
@@ -203,31 +256,6 @@ class HDF5VLADataset:
         # If action's format is different from state's,
         # you may implement fill_in_action()
         actions = fill_in_state(actions)
-        
-
-        crop_param = {
-            'cam_high': (0, 0, 480, 640),
-            'cam_left_wrist': (480, 0, 240, 320),
-            'cam_right_wrist': (480, 320, 240, 320)
-        }
-        cam_left_wrist = []
-        cam_right_wrist = []
-        cam_high = []
-        cap = cv2.VideoCapture(video_path)
-        while True:
-            ret, frame = cap.read()
-            if not ret:
-                break
-            for key, (x, y, h, w) in crop_param.items():
-                if key == 'cam_high':
-                    cam_high.append(frame[y:y+h, x:x+w])
-                elif key == 'cam_left_wrist':
-                    cam_left_wrist.append(frame[y:y+h, x:x+w])
-                elif key == 'cam_right_wrist':
-                    cam_right_wrist.append(frame[y:y+h, x:x+w])
-        cam_left_wrist = np.array(cam_left_wrist)
-        cam_high = np.array(cam_high)
-        cam_right_wrist = np.array(cam_right_wrist)
 
         def parse_img(images):
             imgs = images[max(step_id-self.IMG_HISORY_SIZE+1, 0):step_id+1]
