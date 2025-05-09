@@ -215,6 +215,11 @@ class RoboticDiffusionTransformerModel(object):
             [[[1, 1, 1, 1, 1, 1, 11.8997, 1, 1, 1, 1, 1, 1, 13.9231]]],
             device=joints.device, dtype=joints.dtype
         )
+
+        joints = joints * torch.tensor(
+            [[1, 1, 1, 1, 1, 1, 4.7908, 1, 1, 1, 1, 1, 1, 4.7888]], 
+            device=joints.device, dtype=joints.dtype
+        )
         
         return joints
 
@@ -304,6 +309,19 @@ class RoboticDiffusionTransformerModel(object):
             action_mask=state_elem_mask.unsqueeze(1),  
             ctrl_freqs=ctrl_freqs
         )
+
+        # print("demension of action 13", joints[0,:,13])
+        action_indices = AGILEX_STATE_INDICES
+        joints = trajectory[:, :, action_indices]
+        print("Predict scale 0-1 13:", joints[0,:,[6,13]])
+        
+
         trajectory = self._unformat_action_to_joint(trajectory).to(torch.float32)
+
+        print("Predict action:", trajectory[0,:,[6,13]])
+
+
+
+        
 
         return trajectory

@@ -165,7 +165,10 @@ def update_observation_window(args, config, ros_operator):
         )
     
     result = ros_operator.get_frame(ignore_master=True)
+
     img_front, img_left, img_right, img_high, img_side, puppet_arm_left, puppet_arm_right, _, _, robot_base = result
+    
+
     # img_front, img_left, img_right, puppet_arm_left, puppet_arm_right = get_ros_observation(args,ros_operator)
     img_front = jpeg_mapping(img_front)
     img_left = jpeg_mapping(img_left)
@@ -324,7 +327,7 @@ def model_inference(args, config, ros_operator):
 # ROS operator class
 # ros operator
 class RosOperator:
-    def __init__(self, infer_args, actions):
+    def __init__(self, infer_args):
         self.robot_base_deque = None
         self.puppet_arm_right_deque = None
         self.puppet_arm_left_deque = None
@@ -335,7 +338,6 @@ class RosOperator:
         self.infer_args = infer_args
         self.init()
         self.init_ros()
-        self.actions = actions
         self.current_action_idx = 0
 
     def init(self):
@@ -349,6 +351,66 @@ class RosOperator:
         self.master_arm_publish_lock = threading.Lock()
         self.master_arm_publish_lock.acquire()
         self.master_arm_publish_thread = None
+
+    def puppet_arm_publish(self, left, right):
+        left[-1] = left[-1] * 11
+        right[-1] = right[-1] * 11
+        joint_state_msg = JointState()
+        joint_state_msg.header = Header()
+        joint_state_msg.header.stamp = rospy.Time.now()  # Set timestep
+        joint_state_msg.name = ['joint0', 'joint1', 'joint2', 'joint3', 'joint4', 'joint5', 'joint6']  # 设置关节名称
+        joint_state_msg.position = left
+        self.master_arm_left_publisher.publish(joint_state_msg)
+        joint_state_msg.position = right
+        self.master_arm_right_publisher.publish(joint_state_msg)
+
+    def puppet_arm_publish_continuous(self, left, right):            
+            rate = rospy.Rate(self.infer_args.publish_rate)
+            left_arm = None
+            right_arm = None
+            while True and not rospy.is_shutdown():
+                if len(self.puppet_arm_left_deque) != 0:
+                    left_arm = list(self.puppet_arm_left_deque[-1].position)
+                if len(self.puppet_arm_right_deque) != 0:
+                    right_arm = list(self.puppet_arm_right_deque[-1].position)
+                if left_arm is None or right_arm is None:
+                    rate.sleep()
+                    continue
+                else:
+                    break
+            left_symbol = [1 if left[i] - left_arm[i] > 0 else -1 for i in range(len(left))]
+            right_symbol = [1 if right[i] - right_arm[i] > 0 else -1 for i in range(len(right))]
+            flag = True
+            step = 0
+            while flag and not rospy.is_shutdown():
+                if self.master_arm_publish_lock.acquire(False):
+                    return
+                left_diff = [abs(left[i] - left_arm[i]) for i in range(len(left))]
+                right_diff = [abs(right[i] - right_arm[i]) for i in range(len(right))]
+                flag = False
+                for i in range(len(left)):
+                    if left_diff[i] < self.infer_args.arm_steps_length[i]:
+                        left_arm[i] = left[i]
+                    else:
+                        left_arm[i] += left_symbol[i] * self.infer_args.arm_steps_length[i]
+                        flag = True
+                for i in range(len(right)):
+                    if right_diff[i] < self.infer_args.arm_steps_length[i]:
+                        right_arm[i] = right[i]
+                    else:
+                        right_arm[i] += right_symbol[i] * self.infer_args.arm_steps_length[i]
+                        flag = True
+                joint_state_msg = JointState()
+                joint_state_msg.header = Header()
+                joint_state_msg.header.stamp = rospy.Time.now()  # Set the timestep
+                joint_state_msg.name = ['joint0', 'joint1', 'joint2', 'joint3', 'joint4', 'joint5', 'joint6']  # 设置关节名称
+                joint_state_msg.position = left_arm
+                self.master_arm_left_publisher.publish(joint_state_msg)
+                joint_state_msg.position = right_arm
+                self.master_arm_right_publisher.publish(joint_state_msg)
+                step += 1
+                print("master_arm_publish_continuous:", step)
+                rate.sleep()
 
     def master_arm_publish_actions_thread(self):
         if self.master_arm_publish_thread is not None:
@@ -697,9 +759,9 @@ def get_arguments():
     parser.add_argument('--img_right_depth_topic', action='store', type=str, help='img_right_depth_topic',
                         default='/camera_r/depth/image_raw', required=False)
     
-    parser.add_argument('--puppet_arm_left_cmd_topic', action='store', type=str, help='puppet_arm_left_cmd_topic',
+    parser.add_argument('--master_arm_left_cmd_topic', action='store', type=str, help='puppet_arm_left_cmd_topic',
                         default='/master/joint_left', required=False)
-    parser.add_argument('--puppet_arm_right_cmd_topic', action='store', type=str, help='puppet_arm_right_cmd_topic',
+    parser.add_argument('--master_arm_right_cmd_topic', action='store', type=str, help='puppet_arm_right_cmd_topic',
                         default='/master/joint_right', required=False)
     parser.add_argument('--puppet_arm_left_topic', action='store', type=str, help='puppet_arm_left_topic',
                         default='/puppet/joint_left', required=False)
@@ -745,6 +807,28 @@ def get_arguments():
     
     parser.add_argument('--lang_embeddings_path', type=str, required=True, 
                         help='Path to the pre-encoded language instruction embeddings')
+    
+
+    parser.add_argument('--use_image_front', action='store_true', help='use_front_image',
+                        default=False, required=False)
+    parser.add_argument('--use_image_left', action='store_true', help='use_left_image',
+                        default=False, required=False)
+    parser.add_argument('--use_image_right', action='store_true', help='use_right_image',
+                        default=False, required=False)
+    parser.add_argument('--use_image_high', action='store_true', help='use_high_image',
+                        default=False, required=False)
+    parser.add_argument('--use_image_side', action='store_true', help='use_side_image',
+                        default=False, required=False)
+
+    parser.add_argument('--use_master_left', action='store_true', help='use_master_left',
+                        default=False, required=False)
+    parser.add_argument('--use_master_right', action='store_true', help='use_master_right',
+                        default=False, required=False)
+
+    parser.add_argument('--use_puppet_left', action='store_true', help='use_puppet_left',
+                        default=False, required=False)
+    parser.add_argument('--use_puppet_right', action='store_true', help='use_puppet_right',
+                        default=False, required=False)
     
     args = parser.parse_args()
     return args
