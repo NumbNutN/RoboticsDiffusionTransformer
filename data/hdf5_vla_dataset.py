@@ -209,14 +209,21 @@ class HDF5VLADataset:
             "instruction": caption,
         }
 
+        # state = qpos / 4
+        # action = qpos / 44
+
         # Rescale gripper to [0, 1]
-        qpos = qpos / np.array(
-            [[1, 1, 1, 1, 1, 1, 4.7908, 1, 1, 1, 1, 1, 1, 4.7888]] 
+
+        # 6  # 6.54230118e-02  5.26302719
+        # 13  # 7.57226944e-02  5.31681633
+
+
+        target_qpos = qpos[step_id:step_id+self.CHUNK_SIZE] / np.array(
+            [[1, 1, 1, 1, 1, 1, 5.26302719, 1, 1, 1, 1, 1, 1, 5.31681633]] 
         )
 
-        
-        target_qpos = qpos[step_id:step_id+self.CHUNK_SIZE] / np.array(
-            [[1, 1, 1, 1, 1, 1, 11.8997, 1, 1, 1, 1, 1, 1, 13.9231]] 
+        qpos = qpos / np.array(
+            [[1, 1, 1, 1, 1, 1, 5.26302719, 1, 1, 1, 1, 1, 1, 5.31681633]]
         )
         
         # Parse the state and action

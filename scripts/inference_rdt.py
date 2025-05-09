@@ -353,8 +353,8 @@ class RosOperator:
         self.master_arm_publish_thread = None
 
     def puppet_arm_publish(self, left, right):
-        left[-1] = left[-1] * 11
-        right[-1] = right[-1] * 11
+        # left[-1] = left[-1] * 11
+        # right[-1] = right[-1] * 11
         joint_state_msg = JointState()
         joint_state_msg.header = Header()
         joint_state_msg.header.stamp = rospy.Time.now()  # Set timestep
