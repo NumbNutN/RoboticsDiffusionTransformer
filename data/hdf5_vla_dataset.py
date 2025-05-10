@@ -56,6 +56,7 @@ class HDF5VLADataset:
 
     def data_preload(self):
         
+        first_load = True
         with open(self.METALIST,'r') as f:
             lines = f.readlines()
             self.file_paths = [line.strip() for line in lines]
@@ -88,11 +89,26 @@ class HDF5VLADataset:
                         break
                     for key, (x, y, h, w) in crop_param.items():
                         if key == 'cam_high':
-                            cam_high.append(frame[y:y+h, x:x+w])
+                            cam_high.append(frame[x:x+h, y:y+w])
                         elif key == 'cam_left_wrist':
-                            cam_left_wrist.append(frame[y:y+h, x:x+w])
+                            cam_left_wrist.append(frame[x:x+h, y:y+w])
                         elif key == 'cam_right_wrist':
-                            cam_right_wrist.append(frame[y:y+h, x:x+w])
+                            cam_right_wrist.append(frame[x:x+h, y:y+w])
+
+                    if first_load:
+                        # save image to check
+                        from PIL import Image
+                        from torchvision.transforms.functional import to_pil_image
+                        image = to_pil_image(frame)
+                        image.save(f"all.jpg")
+                        image = to_pil_image(cam_left_wrist[-1])
+                        image.save(f"left.jpg")
+                        image = to_pil_image(cam_right_wrist[-1])
+                        image.save(f"right.jpg")
+                        image = to_pil_image(cam_high[-1])
+                        image.save(f"high.jpg")
+                        first_load = False
+
                 cam_left_wrist = np.array(cam_left_wrist)
                 cam_high = np.array(cam_high)
                 cam_right_wrist = np.array(cam_right_wrist)
@@ -331,14 +347,17 @@ class HDF5VLADataset:
             return False, None
         
         first_idx = 1
-        
+
+        target_qpos = qpos[1:] / np.array(
+            [[1, 1, 1, 1, 1, 1, 5.26302719, 1, 1, 1, 1, 1, 1, 5.31681633]]
+        )
+
         # Rescale gripper to [0, 1]
         qpos = qpos[:-1] / np.array(
-            [[1, 1, 1, 1, 1, 1, 4.7908, 1, 1, 1, 1, 1, 1, 4.7888]] 
+            [[1, 1, 1, 1, 1, 1, 5.26302719, 1, 1, 1, 1, 1, 1, 5.31681633]]
         )
-        target_qpos = qpos[1:] / np.array(
-            [[1, 1, 1, 1, 1, 1, 11.8997, 1, 1, 1, 1, 1, 1, 13.9231]] 
-        )
+
+        # assert(False and "warn:state only")
         
         # Parse the state and action
         state = qpos[first_idx-1:]
