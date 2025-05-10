@@ -21,7 +21,9 @@ class HDF5VLADataset:
         # Each HDF5 file contains one episode
         self.DATASET_NAME = "human_mani"
 
-        self.METALIST = "/data/home/tanhengkai/cobot-magic-vm/assets/metadatas/human_meta_file.list"
+        self.METALIST = "/data/home/tanhengkai/cobot-magic-vm/assets/metadatas/rdt_training_human_meta_file.list"
+
+        self.first_train = True
         
         self.data_preload()
 

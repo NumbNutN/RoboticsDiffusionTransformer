@@ -148,6 +148,7 @@ def train(args, logger):
     ):
         logger.info("Constructing model from pretrained checkpoint.")
         rdt = RDTRunner.from_pretrained(args.pretrained_model_name_or_path)
+        rdt.load_state_dict(torch.load("/data/home/tanhengkai/cobot-magic-vm/RoboticsDiffusionTransformer/robotics-diffusion-transformer/rdt-1b-finetune/mp_rank_00_model_states.pt")["module"])
     else:
         logger.info("Constructing model from provided config.")
         # Calculate the image condition length
